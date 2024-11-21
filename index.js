@@ -25,7 +25,7 @@ app.get("/", async (req, res) => {
     let htmlContent = `
       <html>
         <head>
-          <title>Lista de Usuários</title>
+          <title>Lista de  cadastros</title>
           <style>
             body { font-family: Arial, sans-serif; }
             table { width: 80%; margin: 20px auto; border-collapse: collapse; }
