@@ -22,10 +22,36 @@ const requestHandler = async (req, res) => {
   } else if (req.method === "GET" && req.url === "/insert-manual") {
     // Inserção manual de dados (nome e email)
     try {
-      // Inserir dados manualmente
       const name = "João";
-      const email = "joao@example.com";
-      
+      let email = "joao@example.com";
+
+      // Verifica se o email já existe no banco
+      const existingUser = await sql`
+        SELECT id FROM users WHERE email = ${email}
+      `;
+
+      if (existingUser.length > 0) {
+        // Se o email já existir, adiciona um número ao final
+        let counter = 1;
+        let newEmail = `${name}${counter}@example.com`;
+        
+        // Verifica se o novo email também existe e continua incrementando o número
+        while (true) {
+          const emailExists = await sql`
+            SELECT id FROM users WHERE email = ${newEmail}
+          `;
+          
+          if (emailExists.length === 0) {
+            email = newEmail;
+            break;
+          }
+
+          counter++;
+          newEmail = `${name}${counter}@example.com`;
+        }
+      }
+
+      // Inserir dados no banco com o email modificado, se necessário
       const result = await sql`
         INSERT INTO users (nome, email)
         VALUES (${name}, ${email})
@@ -58,9 +84,35 @@ http.createServer(requestHandler).listen(3000, () => {
   const insertData = async () => {
     try {
       const name = "Mariana";
-      const email = "mariana@example.com";
+      let email = "mariana@example.com";
       
-      // Inserir dados no banco
+      // Verifica se o email já existe no banco
+      const existingUser = await sql`
+        SELECT id FROM users WHERE email = ${email}
+      `;
+
+      if (existingUser.length > 0) {
+        // Se o email já existir, adiciona um número ao final
+        let counter = 1;
+        let newEmail = `${name}${counter}@example.com`;
+        
+        // Verifica se o novo email também existe e continua incrementando o número
+        while (true) {
+          const emailExists = await sql`
+            SELECT id FROM users WHERE email = ${newEmail}
+          `;
+          
+          if (emailExists.length === 0) {
+            email = newEmail;
+            break;
+          }
+
+          counter++;
+          newEmail = `${name}${counter}@example.com`;
+        }
+      }
+
+      // Inserir dados no banco com o email modificado, se necessário
       const result = await sql`
         INSERT INTO users (nome, email)
         VALUES (${name}, ${email})
