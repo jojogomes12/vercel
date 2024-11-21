@@ -1,131 +1,125 @@
 require("dotenv").config();  // Carrega as variáveis de ambiente
 
-const http = require("http");
+const express = require("express");
 const { neon } = require("@neondatabase/serverless");
-const fs = require("fs");
-const url = require("url");
-const querystring = require("querystring");
+const bodyParser = require("body-parser");
+
+const app = express();
+const port = 3000;
 
 // Conexão com o banco Neon usando a URL do ambiente
 const sql = neon(process.env.DATABASE_URL);
 
-// Função para listar todos os registros de usuários
-const listUsers = async () => {
+// Middleware para interpretar os dados do formulário
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Rota para listar os usuários e renderizar uma página HTML
+app.get("/", async (req, res) => {
   try {
     // Consulta para obter todos os registros de usuários
     const result = await sql`
       SELECT id, nome, email FROM users
     `;
 
-    // Se houver resultados, mostra-os
-    if (result.length > 0) {
-      console.log("Usuários encontrados:");
-      result.forEach(user => {
-        console.log(`ID: ${user.id}, Nome: ${user.nome}, Email: ${user.email}`);
-      });
-    } else {
-      console.log("Nenhum usuário encontrado.");
-    }
+    // HTML da página
+    let htmlContent = `
+      <html>
+        <head>
+          <title>Lista de Usuários</title>
+          <style>
+            body { font-family: Arial, sans-serif; }
+            table { width: 80%; margin: 20px auto; border-collapse: collapse; }
+            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+            th { background-color: #f4f4f4; }
+            form { width: 80%; margin: 20px auto; }
+            input[type="text"], input[type="email"] { padding: 10px; width: 100%; margin: 10px 0; }
+            button { padding: 10px 15px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+            button:hover { background-color: #45a049; }
+          </style>
+        </head>
+        <body>
+          <h1 style="text-align: center;">Usuários Encontrados</h1>
+          <table>
+            <tr>
+              <th>ID</th>
+              <th>Nome</th>
+              <th>Email</th>
+            </tr>`;
+
+    // Adiciona os usuários na tabela HTML
+    result.forEach(user => {
+      htmlContent += `
+        <tr>
+          <td>${user.id}</td>
+          <td>${user.nome}</td>
+          <td>${user.email}</td>
+        </tr>`;
+    });
+
+    htmlContent += `
+          </table>
+          <h2 style="text-align: center;">Adicionar Novo Usuário</h2>
+          <form action="/add-user" method="POST" style="text-align: center;">
+            <input type="text" name="nome" placeholder="Nome" required />
+            <input type="email" name="email" placeholder="Email" required />
+            <button type="submit">Adicionar Usuário</button>
+          </form>
+        </body>
+      </html>`;
+
+    // Envia o conteúdo HTML para o navegador
+    res.send(htmlContent);
   } catch (error) {
     console.error("Erro ao listar os usuários:", error);
+    res.status(500).send("Erro ao listar os usuários.");
   }
-};
+});
 
-// Função para renderizar o formulário de inserção
-const renderAddUserForm = (res) => {
-  const htmlForm = `
-    <html>
-      <head>
-        <title>Adicionar Usuário</title>
-      </head>
-      <body>
-        <h1>Adicionar Novo Usuário</h1>
-        <form method="POST" action="/add-user">
-          <label for="nome">Nome:</label><br>
-          <input type="text" id="nome" name="nome" required><br><br>
-          
-          <label for="email">Email:</label><br>
-          <input type="email" id="email" name="email" required><br><br>
+// Rota para adicionar um novo usuário ao banco de dados
+app.post("/add-user", async (req, res) => {
+  try {
+    const { nome, email } = req.body;
 
-          <input type="submit" value="Adicionar Usuário">
-        </form>
-      </body>
-    </html>
-  `;
-  res.writeHead(200, { "Content-Type": "text/html" });
-  res.end(htmlForm);
-};
+    // Verifica se o email já existe no banco
+    const existingUser = await sql`
+      SELECT id FROM users WHERE email = ${email}
+    `;
 
-// Função para lidar com o envio do formulário
-const handleAddUser = async (req, res) => {
-  let body = '';
-  
-  // Coletar os dados do POST
-  req.on('data', chunk => {
-    body += chunk.toString();
-  });
-  
-  req.on('end', async () => {
-    const { nome, email } = querystring.parse(body);
+    if (existingUser.length > 0) {
+      // Adiciona um número ao email para evitar duplicação
+      const newEmail = email.replace(/@/, `+${Date.now()}@`);
 
-    try {
-      // Verificar se o email já existe
-      const existingUser = await sql`
-        SELECT id FROM users WHERE email = ${email}
+      // Insere o novo usuário com o email modificado
+      const result = await sql`
+        INSERT INTO users (nome, email)
+        VALUES (${nome}, ${newEmail})
+        RETURNING id, nome, email
       `;
 
-      if (existingUser.length > 0) {
-        // Adiciona um número ao email caso já exista
-        const emailWithNumber = email.replace('@', `+1@`);
-        await sql`
-          INSERT INTO users (nome, email)
-          VALUES (${nome}, ${emailWithNumber})
-          RETURNING id, nome, email
-        `;
-        res.writeHead(200, { "Content-Type": "text/html" });
-        res.end(`<h1>Usuário já existente, email alterado para ${emailWithNumber}</h1><a href="/">Voltar</a>`);
-      } else {
-        // Inserir os dados no banco
-        await sql`
-          INSERT INTO users (nome, email)
-          VALUES (${nome}, ${email})
-          RETURNING id, nome, email
-        `;
-        res.writeHead(200, { "Content-Type": "text/html" });
-        res.end(`<h1>Usuário adicionado com sucesso!</h1><a href="/">Voltar</a>`);
-      }
-    } catch (error) {
-      console.error("Erro ao adicionar o usuário:", error);
-      res.writeHead(500, { "Content-Type": "text/html" });
-      res.end("<h1>Erro ao adicionar o usuário.</h1><a href='/'>Voltar</a>");
+      res.send(`
+        <h1>Usuário já existente com esse email. Novo email gerado: ${newEmail}</h1>
+        <a href="/">Voltar</a>
+      `);
+    } else {
+      // Insere o usuário com o email original
+      const result = await sql`
+        INSERT INTO users (nome, email)
+        VALUES (${nome}, ${email})
+        RETURNING id, nome, email
+      `;
+
+      res.send(`
+        <h1>Usuário Adicionado com Sucesso!</h1>
+        <a href="/">Voltar</a>
+      `);
     }
-  });
-};
-
-// Função para lidar com as requisições
-const requestHandler = (req, res) => {
-  const pathname = url.parse(req.url).pathname;
-  
-  if (req.method === "GET" && pathname === "/") {
-    // Página inicial com a lista de usuários
-    listUsers().then(() => {
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end("<h1>Bem-vindo! Verifique o console para a lista de usuários.</h1>");
-    });
-  } else if (req.method === "GET" && pathname === "/add-user") {
-    // Página para adicionar um usuário
-    renderAddUserForm(res);
-  } else if (req.method === "POST" && pathname === "/add-user") {
-    // Processa o envio do formulário
-    handleAddUser(req, res);
-  } else {
-    // Rota não encontrada
-    res.writeHead(404, { "Content-Type": "text/html" });
-    res.end("<h1>Rota não encontrada!</h1>");
+  } catch (error) {
+    console.error("Erro ao adicionar o usuário:", error);
+    res.status(500).send("Erro ao adicionar o usuário.");
   }
-};
+});
 
-// Criação do servidor HTTP
-http.createServer(requestHandler).listen(3000, () => {
-  console.log("Server running at http://localhost:3000");
+// Inicia o servidor na porta 3000
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
 });
