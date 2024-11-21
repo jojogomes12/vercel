@@ -1,72 +1,89 @@
-// api/add-user.js
-require("dotenv").config();
-const { neon } = require("@neondatabase/serverless");
-const querystring = require("querystring");
+require("dotenv").config();  // Carrega as variáveis de ambiente
 
-// Conexão com o banco Neon
+const { neon } = require("@neondatabase/serverless");
+const http = require("http");
+const fs = require("fs");
+const url = require("url");
+
+// Conexão com o banco Neon usando a URL do ambiente
 const sql = neon(process.env.DATABASE_URL);
 
-module.exports = async (req, res) => {
-  if (req.method === "GET") {
-    // Exibe o formulário HTML para inserir um usuário
-    const htmlForm = `
-      <html>
-        <head>
-          <title>Adicionar Usuário</title>
-        </head>
-        <body>
-          <h1>Adicionar Novo Usuário</h1>
-          <form method="POST">
-            <label for="nome">Nome:</label><br>
-            <input type="text" id="nome" name="nome" required><br><br>
-            
-            <label for="email">Email:</label><br>
-            <input type="email" id="email" name="email" required><br><br>
+// Função para servir a página HTML
+const servePage = (page, res) => {
+  fs.readFile(page, "utf8", (err, data) => {
+    if (err) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Erro ao carregar a página.");
+    } else {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(data);
+    }
+  });
+};
 
-            <input type="submit" value="Adicionar Usuário">
-          </form>
-        </body>
-      </html>
+// Função para inserir dados de usuário
+const insertUser = async (name, email, res) => {
+  try {
+    // Verifica se o email já existe, e se sim, adicione um número para garantir a unicidade
+    let result = await sql`SELECT id FROM users WHERE email = ${email}`;
+    if (result.length > 0) {
+      // Se o email já existir, adiciona um número antes do email
+      const emailParts = email.split("@");
+      email = `${emailParts[0]}1@${emailParts[1]}`; // Adicionando um número no final do email
+    }
+
+    // Insere o usuário no banco de dados
+    await sql`
+      INSERT INTO users (nome, email)
+      VALUES (${name}, ${email})
     `;
-    res.status(200).send(htmlForm);
-  } else if (req.method === "POST") {
-    // Coleta os dados do formulário
-    let body = '';
-    req.on('data', chunk => {
-      body += chunk.toString();
+
+    // Após a inserção, redireciona para a página inicial
+    res.writeHead(302, {
+      Location: "/"
     });
+    res.end();
 
-    req.on('end', async () => {
-      const { nome, email } = querystring.parse(body);
-
-      try {
-        // Verifica se o email já existe
-        const existingUser = await sql`
-          SELECT id FROM users WHERE email = ${email}
-        `;
-
-        if (existingUser.length > 0) {
-          // Modifica o email se já existir
-          const emailWithNumber = email.replace('@', `+1@`);
-          await sql`
-            INSERT INTO users (nome, email)
-            VALUES (${nome}, ${emailWithNumber})
-            RETURNING id, nome, email
-          `;
-          res.status(200).send(`<h1>Usuário já existente, email alterado para ${emailWithNumber}</h1><a href='/add-user'>Voltar</a>`);
-        } else {
-          // Insere o novo usuário
-          await sql`
-            INSERT INTO users (nome, email)
-            VALUES (${nome}, ${email})
-            RETURNING id, nome, email
-          `;
-          res.status(200).send(`<h1>Usuário adicionado com sucesso!</h1><a href='/add-user'>Voltar</a>`);
-        }
-      } catch (error) {
-        console.error("Erro ao adicionar o usuário:", error);
-        res.status(500).send("<h1>Erro ao adicionar o usuário.</h1><a href='/add-user'>Voltar</a>");
-      }
-    });
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "text/plain" });
+    res.end("Erro ao inserir dados no banco.");
   }
 };
+
+// Função para tratar as requisições HTTP
+const requestHandler = (req, res) => {
+  const parsedUrl = url.parse(req.url, true);
+  
+  // Exibir a página inicial
+  if (parsedUrl.pathname === "/") {
+    servePage("index.html", res);
+  }
+  
+  // Rota para a página de cadastro
+  else if (parsedUrl.pathname === "/add-user" && req.method === "GET") {
+    servePage("add-user.html", res);
+  }
+
+  // Inserir dados quando o formulário for enviado via POST
+  else if (parsedUrl.pathname === "/add-user" && req.method === "POST") {
+    let body = "";
+    req.on("data", chunk => {
+      body += chunk;
+    });
+
+    req.on("end", () => {
+      const parsedBody = new URLSearchParams(body);
+      const name = parsedBody.get("name");
+      const email = parsedBody.get("email");
+      insertUser(name, email, res);
+    });
+  } else {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Página não encontrada.");
+  }
+};
+
+// Criação do servidor HTTP
+http.createServer(requestHandler).listen(3000, () => {
+  console.log("Server running at http://localhost:3000");
+});
