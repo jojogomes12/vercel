@@ -1,46 +1,71 @@
-const express = require('express');
+require("dotenv").config();  // Carrega as variáveis de ambiente
+
+const express = require("express");
+const { neon } = require("@neondatabase/serverless");
+
 const app = express();
-const { Client } = require('./db');  // Importando a conexão com o banco Neon
 const port = 3000;
 
-// Middleware para interpretar JSON (caso precise enviar dados JSON)
-app.use(express.json());
+// Conexão com o banco Neon usando a URL do ambiente
+const sql = neon(process.env.DATABASE_URL);
 
-// Rota padrão
-app.get('/', (req, res) => {
-    res.send('Hello from Node.js!');
+// Rota para listar os usuários e renderizar uma página HTML
+app.get("/", async (req, res) => {
+  try {
+    // Consulta para obter todos os registros de usuários
+    const result = await sql`
+      SELECT id, nome, email FROM users
+    `;
+
+    // Caso tenha resultados, renderiza a página com os dados
+    if (result.length > 0) {
+      let htmlContent = `
+        <html>
+          <head>
+            <title>Lista de Usuários</title>
+            <style>
+              body { font-family: Arial, sans-serif; }
+              table { width: 80%; margin: 20px auto; border-collapse: collapse; }
+              th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+              th { background-color: #f4f4f4; }
+            </style>
+          </head>
+          <body>
+            <h1 style="text-align: center;">Usuários Encontrados</h1>
+            <table>
+              <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>Email</th>
+              </tr>`;
+
+      // Adiciona os usuários na tabela HTML
+      result.forEach(user => {
+        htmlContent += `
+          <tr>
+            <td>${user.id}</td>
+            <td>${user.nome}</td>
+            <td>${user.email}</td>
+          </tr>`;
+      });
+
+      htmlContent += `
+            </table>
+          </body>
+        </html>`;
+
+      // Envia o conteúdo HTML para o navegador
+      res.send(htmlContent);
+    } else {
+      res.send("<h1 style='text-align: center;'>Nenhum usuário encontrado.</h1>");
+    }
+  } catch (error) {
+    console.error("Erro ao listar os usuários:", error);
+    res.status(500).send("Erro ao listar os usuários.");
+  }
 });
 
-// Rota para testar a conexão com o banco Neon
-app.get('/test-db', async (req, res) => {
-    try {
-        const result = await Client.query('SELECT NOW()');
-        res.send(`Conexão com o banco bem-sucedida: ${result.rows[0].now}`);
-    } catch (err) {
-        res.status(500).send('Erro ao conectar ao banco de dados');
-    }
-});
-
-// Rota para inserir dados no banco Neon
-app.post('/insert-data', async (req, res) => {
-    const { name, email } = req.body;  // Obtendo dados do corpo da requisição
-
-    if (!name || !email) {
-        return res.status(400).send('Nome e email são obrigatórios.');
-    }
-
-    try {
-        const query = 'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *';
-        const values = [name, email];
-
-        const result = await Client.query(query, values);
-        res.status(200).send(`Dados inseridos: ${JSON.stringify(result.rows[0])}`);
-    } catch (err) {
-        res.status(500).send('Erro ao inserir dados no banco de dados');
-    }
-});
-
-// Inicia o servidor
+// Inicia o servidor na porta 3000
 app.listen(port, () => {
-    console.log(`Server listening at http://localhost:${port}`);
+  console.log(`Server running at http://localhost:${port}`);
 });
