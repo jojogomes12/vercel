@@ -1,15 +1,20 @@
 {
     "version": 2,
     "builds": [
-        {
-            "src": "index.js",
-            "use": "@vercel/node"
-        }
+      {
+        "src": "api/**/*.js",
+        "use": "@vercel/node"
+      }
     ],
     "routes": [
-        {
-            "src": "/test-db",
-            "dest": "/index.js"
-        }
+      {
+        "src": "/add-user",
+        "dest": "/api/add-user.js"
+      },
+      {
+        "src": "/",
+        "dest": "/api/index.js"
+      }
     ]
-}
+  }
+  
