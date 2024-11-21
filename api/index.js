@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
       let html = `
         <html>
           <head>
-            <title>Lista de Usuários</title>
+            <title>Lista de Usuários de dentro</title>
             <style>
               body {
                 font-family: Arial, sans-serif;
